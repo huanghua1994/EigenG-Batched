@@ -23,6 +23,18 @@ print_header(const char *func_name, int argc, char **argv)
   int runtime_Version;
   gpuRuntimeGetVersion( &runtime_Version );
 
+  if (argc < 7)
+  {
+    printf("Usage: %s <batch-size> <test-fp32> <test-fp64> <test-EigenG-batch> <test-cusolver-evj-batch> <test-cusolver-evd-repeat>\n", argv[0]);
+    printf("  <batch-size>                : int, number of EVD problems in a batch\n");
+    printf("  <test-fp32>                 : 0 or 1, if we should test FP32\n");
+    printf("  <test-fp64>                 : 0 or 1, if we should test FP64\n");
+    printf("  <test-EigenG-batch>         : 0 or 1, if we should test EigenG-Batched impl\n");
+    printf("  <test-cusolver-evj-batch>   : 0 or 1, if we should test cusolverDnXsyevjBatched\n");
+    printf("  <test-cusolver-evd-repeat>  : 0 or 1, if we should test cusolverDnXsyevd repeatly for <batch-size> times\n");
+    printf("\n\n");
+  }
+
   printf("<!--/****************************************\n");
 
   printf("Evaluating the performance on %s\n", func_name==NULL?" ":func_name);

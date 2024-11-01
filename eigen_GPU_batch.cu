@@ -29,7 +29,7 @@
 #include "jac_tiled.hpp"
 //--
 
-
+#include "nvtx3/nvToolsExt.h"
 
 template <class T>
 __global__ void
@@ -44,10 +44,9 @@ eigen_GPU_batch_n1_(const int L, const int nm, const int n, T *a_, T *w_)
 
   const int step = blockDim.x*gridDim.x;
   #pragma unroll
-  for (int id=pos; id<L; id+=step) {
+  for (int id=pos; id<L; id+=step, a += len*step, w += n*step) {
     *w = *a;
     *a = static_cast<T>(1.0);
-    a += len*step; w += n*step;
   }
 }
 
@@ -66,11 +65,9 @@ eigen_GPU_batch_tiled_(const int L, const int nm, const int n, const int m, T *a
 #if DO_PREFETCH
   a = a_ + pos*len;
   #pragma unroll 1
-  for (int id_=0; id_<PRELOAD_SLOT; id_+=step) {
+  for (int id_=0; id_<PRELOAD_SLOT; id_+=step, a += len*step) {
     int id = id_ + pos;
-    if ( id < L )
-    prefetch_mat_cg<T, tile_size> (nm*n, a);
-    a += len*step;
+    if ( id < L ) prefetch_mat_cg<T, tile_size> (nm*n, a);
   }
 #endif
 
@@ -78,14 +75,14 @@ eigen_GPU_batch_tiled_(const int L, const int nm, const int n, const int m, T *a
   w  = w_  + pos*m;
   wk = wk_ + pos*len;
   #pragma unroll 1
-  for (int id_=0; id_<L; id_+=step) {
+  for (int id_=0; id_<L; id_+=step, a += len*step, w += n*step) {
     const int id = id_ + pos;
     const bool run = (id < L);
 
     SYNC_IF_NEEDED();
 #if DO_PREFETCH
     if ( PRELOAD_SLOT > 0 && id+PRELOAD_SLOT*step < L )
-    prefetch_mat_cg<T, tile_size> (nm*n, a+PRELOAD_SLOT*len*step);
+      prefetch_mat_cg<T, tile_size> (nm*n, a+PRELOAD_SLOT*len*step);
 #endif
 
     SYNC_IF_NEEDED();
@@ -117,8 +114,6 @@ eigen_GPU_batch_tiled_(const int L, const int nm, const int n, const int m, T *a
 #else
     if(run) jac_tiled<T, tile_size> ( a, wk, nm, n, w );
 #endif
-
-    a += len*step; w += n*step;
   }
 }
 
@@ -140,11 +135,9 @@ eigen_GPU_batch_(const int L, const int nm, const int n, const int m, T *a_, T *
 #if DO_PREFETCH
   a = a_ + pos*len;
   #pragma unroll 1
-  for (int id_=0; id_<PRELOAD_SLOT; id_+=step) {
+  for (int id_=0; id_<PRELOAD_SLOT; id_+=step, a += len*step) {
     int id = id_ + pos;
-    if ( id < L )
-    prefetch_mat_cg<T, WARP_GPU_SIZE> (nm*n, a);
-    a += len*step;
+    if ( id < L ) prefetch_mat_cg<T, WARP_GPU_SIZE> (nm*n, a);
   }
 #endif
 
@@ -157,13 +150,13 @@ eigen_GPU_batch_(const int L, const int nm, const int n, const int m, T *a_, T *
   wk = wk_ + pos*len;
   e  = e_  + pos*n;
   #pragma unroll 1
-  for (int id_=0; id_<L; id_+=step) {
+  for (int id_=0; id_<L; id_+=step, a += len*step, w += n*step) {
     const int id = id_ + pos;
     const bool run = (id < L);
 
 #if DO_PREFETCH
     if ( PRELOAD_SLOT > 0 && id+PRELOAD_SLOT*step < L )
-    prefetch_mat_cg<T, WARP_GPU_SIZE> (nm*n, a+PRELOAD_SLOT*len*step);
+      prefetch_mat_cg<T, WARP_GPU_SIZE> (nm*n, a+PRELOAD_SLOT*len*step);
 #endif
 
 #if TIMER
@@ -195,8 +188,6 @@ eigen_GPU_batch_(const int L, const int nm, const int n, const int m, T *a_, T *
 #if TIMER
     t3 = __global_timer__();
 #endif
-
-    a += len*step; w += n*step;
   }
 
 #if TIMER
@@ -238,6 +229,7 @@ eigen_GPU_batch_RUN(const int L, const int nm, const int n, const int m, T * a, 
   const int PRELOAD_SLOT = 0;
 #endif
 
+  nvtxRangePushA("eigen_GPU_batch");
   if (n == 1) {
 #if defined(__NVCC__)
     cudaFuncSetAttribute( eigen_GPU_batch_n1_ <T>,
@@ -291,6 +283,7 @@ eigen_GPU_batch_RUN(const int L, const int nm, const int n, const int m, T * a, 
 #endif
     eigen_GPU_batch_ <T> <<<numTB, numTH, sizeSH, stream>>> (L, nm, n, m, a, w, e, wk, PRELOAD_SLOT);
   }
+  nvtxRangePop();
 
   return gpuSuccess;
 }

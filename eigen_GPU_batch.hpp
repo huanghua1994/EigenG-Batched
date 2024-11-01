@@ -76,7 +76,7 @@ eigen_GPU_batch_BufferSize(const int L, const int nm, const int n, const int m, 
 }
 
 template <class T>
-__host__ void
+__host__ float
 eigen_GPU_batch(const int L, const int nm, const int n, const int m, T * a, T * w, T * wk, const gpuStream_t stream=NULL)
 {
   int current_device;
@@ -98,6 +98,11 @@ eigen_GPU_batch(const int L, const int nm, const int n, const int m, T * a, T * 
     gpuSetDevice( attr_a.device );
   }
 
+  cudaEvent_t start_event, stop_event;
+  cudaEventCreate(&start_event);
+  cudaEventCreate(&stop_event);
+
+  cudaEventRecord(start_event, stream);
 //  if (std::is_same<T,half>::value) {
 //    ;
 //  }
@@ -107,8 +112,17 @@ eigen_GPU_batch(const int L, const int nm, const int n, const int m, T * a, T * 
   if (std::is_same<T,double>::value) {
     eigen_GPU_batch_DP(L, nm, n, m, (double*)a, (double*)w, (double*)wk, stream);
   }
+  cudaEventRecord(stop_event, stream);
+
+  cudaEventSynchronize(start_event);
+  cudaEventSynchronize(stop_event);
+  float runtime_ms = 0;
+  cudaEventElapsedTime(&runtime_ms, start_event, stop_event);
+  cudaEventDestroy(start_event);
+  cudaEventDestroy(stop_event);
 
   gpuSetDevice( current_device );
+  return runtime_ms;
 }
 
 #endif

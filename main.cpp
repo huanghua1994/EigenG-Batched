@@ -258,17 +258,18 @@ GPU_batch_test(const int Itr, const int L, const int n, const Matrix_type type, 
 
     gpuDeviceSynchronize();
     gpuSetDevice(0);
-    double ts = get_wtime();
+    //double ts = get_wtime();
+    float runtime_ms = 0;
     switch ( Solver )  {
     case Solver_type::EIGENG_BATCH:
-      eigen_GPU_batch(L, nm, n, m, a_d, w_d, wk_d, stream);
+      runtime_ms = eigen_GPU_batch(L, nm, n, m, a_d, w_d, wk_d, stream);
       break;
 #if defined(__NVCC__)
     case Solver_type::CUSOLVER_EVJ_BATCH:
-      cusolver_test(n, a_d, nm, w_d, L);
+      runtime_ms = cusolver_test(n, a_d, nm, w_d, L);
       break;
     case Solver_type::CUSOLVER_EVD:
-      cusolver_evd_test(n, a_d, nm, w_d, L);
+      runtime_ms = cusolver_evd_test(n, a_d, nm, w_d, L);
       break;
 #endif
 #if defined(__HIPCC__)
@@ -282,8 +283,9 @@ GPU_batch_test(const int Itr, const int L, const int n, const Matrix_type type, 
     gpuSetDevice(0);
 
     gpuDeviceSynchronize();
-    double te = get_wtime();
-    total_time += (te - ts);
+    //double te = get_wtime();
+    //total_time += (te - ts);
+    total_time += (double) runtime_ms * 1e-3;
   }
 
   if (accuracy_test) {
@@ -305,8 +307,9 @@ GPU_batch_test(const int Itr, const int L, const int n, const Matrix_type type, 
   double st_data = sizeof(T)*L*(double)n*(n/2.+2. +n+1. +n     );
   double data = ld_data + st_data;
 
-  printf("N=%d time=%le %le[GF/s] %le[GB/s]\n",
-         n, tm, 1e-9*flop/tm, 1e-9*data/tm);
+  //printf("N=%d time=%le %le[GF/s] %le[GB/s]\n",
+  //       n, tm, 1e-9*flop/tm, 1e-9*data/tm);
+  printf("%4d, %.4le, %.4le, %.4le\n", n, tm, 1e-9*flop/tm, 1e-9*data/tm);
   fflush(stdout);
 
   gpuFree(a_d);
@@ -322,21 +325,42 @@ main(int argc, char* argv[])
 {
   print_header("GPU-Batch-eigensolver", argc, argv);
 
-  const int iter = 20;
-  const int numBatch = 16384;
+  const int iter = 10;
+//  const int numBatch = 16384;
 //  const Matrix_type type = Matrix_type::MATRIX_FRANK;
   const Matrix_type type = Matrix_type::MATRIX_LETKF;
 //  const Matrix_type type = Matrix_type::MATRIX_SYM_RAND;
 
+  int batch_size = 512;
+  bool test_fp32 = true;
+  bool test_fp64 = true;
+  bool test_eigeng_batch = true;
+  bool test_cu_evj_batch = true;
+  bool test_cu_evd_repeat = true;
+  if (argc >= 2) batch_size = atoi(argv[1]);
+  if (argc >= 3) test_fp32 = atoi(argv[2]) > 0;
+  if (argc >= 4) test_fp64 = atoi(argv[3]) > 0;
+  if (argc >= 5) test_eigeng_batch = atoi(argv[4]) > 0;
+  if (argc >= 6) test_cu_evj_batch = atoi(argv[5]) > 0;
+  if (argc >= 7) test_cu_evd_repeat = atoi(argv[6]) > 0;
+  printf("\n $$$$$ Test settings $$$$$\n");
+  printf("  <batch-size>                : %d\n", batch_size);
+  printf("  <test-fp32>                 : %d\n", test_fp32);
+  printf("  <test-fp64>                 : %d\n", test_fp64);
+  printf("  <test-EigenG-batch>         : %d\n", test_eigeng_batch);
+  printf("  <test-cusolver-evj-batch>   : %d\n", test_cu_evj_batch);
+  printf("  <test-cusolver-evd-repeat>  : %d\n", test_cu_evd_repeat);
+
+
 #if defined(__NVCC__)
-  const int nums[] = { 3, 4, 5, 7, 8, 9, 10, 11, 12, 14, 15, 16, 17, 20, 23, 24, 25, 28, 31, 32, 33, 47, 48, 49, 63, 64, 65, 95, 96, 97, 127, 128, 129, 159, 160, 161, 191, 192, 193, 223, 224, 225, 255, 256, 257, 319, 320, 321, 511, 512, 0 };
+  const int nums[] = { 4, 8, 16, 32, 48, 64, 80, 96, 112, 128, 160, 192, 224, 256, 320, 384, 448, 512, 640, 768, 896, 1024, 0 };
 #endif
 #if defined(__HIPCC__)
   //const int nums[] = { 3, 4, 5, 7, 8, 9, 10, 11, 12, 14, 15, 16, 17, 20, 23, 24, 25, 28, 31, 32, 33, 47, 48, 49, 63, 64, 65, 95, 96, 97, 127, 128, 129, 159, 160, 161, 191, 192, 193, 223, 224, 225, 255, 256, 0 };
   const int nums[] = { 3, 4, 5, 7, 8, 9, 10, 11, 12, 14, 15, 16, 17, 20, 23, 24, 25, 28, 31, 32, 33, 47, 48, 49, 63, 64, 65, 95, 96, 97, 127, 128, 129, 0 };
 #endif
 
-
+  /*
   printf(">> float accuracy test\n");
   for(int i=0; nums[i] > 0; i++) { const int n = nums[i];
     GPU_batch_test<float,Solver_type::EIGENG_BATCH>(1, 1, n, type, true);
@@ -357,20 +381,80 @@ main(int argc, char* argv[])
   for(int i=0; nums[i] > 0; i++) { const int n = nums[i];
     GPU_batch_test<double,Solver_type::EIGENG_BATCH>(iter, numBatch, n, type, true);
   }
+  */
+
+   bool test_accuracy = false;
+
+  if (test_fp32 && test_eigeng_batch)
+  {
+    printf("\n");
+    printf(">> float EigenG TQL, %d iterations.\n",iter);
+    printf("N, runtime (s), GF/s, GB/s\n");
+    for(int i=0; nums[i] > 0; i++)
+      GPU_batch_test<float,Solver_type::EIGENG_BATCH>(iter, batch_size, nums[i], type, test_accuracy);
+  }
+  if (test_fp64 && test_eigeng_batch)
+  {
+    printf("\n");
+    printf(">> double EigenG TQL, %d iterations.\n",iter);
+    printf("N, runtime (s), GF/s, GB/s\n");
+    for(int i=0; nums[i] > 0; i++)
+      GPU_batch_test<double,Solver_type::EIGENG_BATCH>(iter, batch_size, nums[i], type, test_accuracy);
+  }
 
 #if defined(__NVCC__)
-  printf("\n");
-  printf(">> float cusolver Jacobi acc_check and avarage of %d iterations.\n",iter);
-  for(int n=8; n<=128; n*=2) {
-    GPU_batch_test<float,Solver_type::CUSOLVER_EVJ_BATCH>(1, 1, n, type, true);
-    GPU_batch_test<float,Solver_type::CUSOLVER_EVJ_BATCH>(iter, numBatch, n, type, false);
+  if (test_fp32)
+  {
+    if (test_cu_evj_batch)
+    {
+      printf("\n");
+      printf(">> float cuSolver Jacobi (cusolverDnDsyevjBatched), %d iterations.\n",iter);
+      printf("N, runtime (s), GF/s, GB/s\n");
+      for(int i=0; nums[i] > 0; i++)
+        GPU_batch_test<float,Solver_type::CUSOLVER_EVJ_BATCH>(iter, batch_size, nums[i], type, test_accuracy);
+    }
+    if (test_cu_evd_repeat)
+    {
+      printf("\n");
+      printf(">> float cuSolver EVD, %d iterations.\n",iter);
+      printf("N, runtime (s), GF/s, GB/s\n");
+      for(int i=0; nums[i] > 0; i++)
+        GPU_batch_test<float,Solver_type::CUSOLVER_EVD>(iter, batch_size, nums[i], type, test_accuracy);
+    }
   }
-  printf("\n");
-  printf(">> double cusolver Jacobi acc_check and avarage of %d iterations.\n",iter);
-  for(int n=8; n<=128; n*=2) {
-    GPU_batch_test<double,Solver_type::CUSOLVER_EVJ_BATCH>(1, 1, n, type, true);
-    GPU_batch_test<double,Solver_type::CUSOLVER_EVJ_BATCH>(iter, numBatch, n, type, false);
+  if (test_fp64)
+  {
+    if (test_cu_evj_batch)
+    {
+      printf("\n");
+      printf(">> double cuSolver Jacobi (cusolverDnDsyevjBatched), %d iterations.\n",iter);
+      printf("N, runtime (s), GF/s, GB/s\n");
+      for(int i=0; nums[i] > 0; i++)
+        GPU_batch_test<double,Solver_type::CUSOLVER_EVJ_BATCH>(iter, batch_size, nums[i], type, test_accuracy);
+    }
+    if (test_cu_evd_repeat)
+    {
+      printf("\n");
+      printf(">> double cuSolver EVD, %d iterations.\n",iter);
+      printf("N, runtime (s), GF/s, GB/s\n");
+      for(int i=0; nums[i] > 0; i++)
+        GPU_batch_test<double,Solver_type::CUSOLVER_EVD>(iter, batch_size, nums[i], type, test_accuracy);
+    }
   }
+  /*
+    printf("\n");
+    printf(">> float cusolver Jacobi acc_check and avarage of %d iterations.\n",iter);
+    for(int n=8; n<=128; n*=2) {
+      GPU_batch_test<float,Solver_type::CUSOLVER_EVJ_BATCH>(1, 1, n, type, true);
+      GPU_batch_test<float,Solver_type::CUSOLVER_EVJ_BATCH>(iter, numBatch, n, type, false);
+    }
+    printf("\n");
+    printf(">> double cusolver Jacobi acc_check and avarage of %d iterations.\n",iter);
+    for(int n=8; n<=128; n*=2) {
+      GPU_batch_test<double,Solver_type::CUSOLVER_EVJ_BATCH>(1, 1, n, type, true);
+      GPU_batch_test<double,Solver_type::CUSOLVER_EVJ_BATCH>(iter, numBatch, n, type, false);
+    }
+  */
 #endif
 
 #if defined(__HIPCC__)
