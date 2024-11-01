@@ -42,6 +42,7 @@ enum class Matrix_type {
 enum class Solver_type {
   EIGENG_BATCH,
   CUSOLVER_EVJ_BATCH,
+  CUSOLVER_EV_BATCH,
   CUSOLVER_EVD,
   HIPSOLVER_EVJ_BATCH,
   HIPSOLVER_EVD
@@ -268,6 +269,9 @@ GPU_batch_test(const int Itr, const int L, const int n, const Matrix_type type, 
     case Solver_type::CUSOLVER_EVJ_BATCH:
       runtime_ms = cusolver_test(n, a_d, nm, w_d, L);
       break;
+    case Solver_type::CUSOLVER_EV_BATCH:
+      runtime_ms = cusolver_ev_batch_test<T>(n, a_d, nm, w_d, L);
+      break;
     case Solver_type::CUSOLVER_EVD:
       runtime_ms = cusolver_evd_test(n, a_d, nm, w_d, L);
       break;
@@ -336,19 +340,22 @@ main(int argc, char* argv[])
   bool test_fp64 = true;
   bool test_eigeng_batch = true;
   bool test_cu_evj_batch = true;
-  bool test_cu_evd_repeat = true;
+  bool test_cu_ev_batch = true;
+  bool test_cu_evd_repeat = false;
   if (argc >= 2) batch_size = atoi(argv[1]);
   if (argc >= 3) test_fp32 = atoi(argv[2]) > 0;
   if (argc >= 4) test_fp64 = atoi(argv[3]) > 0;
   if (argc >= 5) test_eigeng_batch = atoi(argv[4]) > 0;
   if (argc >= 6) test_cu_evj_batch = atoi(argv[5]) > 0;
-  if (argc >= 7) test_cu_evd_repeat = atoi(argv[6]) > 0;
+  if (argc >= 7) test_cu_ev_batch = atoi(argv[6]) > 0;
+  if (argc >= 8) test_cu_evd_repeat = atoi(argv[7]) > 0;
   printf("\n $$$$$ Test settings $$$$$\n");
   printf("  <batch-size>                : %d\n", batch_size);
   printf("  <test-fp32>                 : %d\n", test_fp32);
   printf("  <test-fp64>                 : %d\n", test_fp64);
   printf("  <test-EigenG-batch>         : %d\n", test_eigeng_batch);
   printf("  <test-cusolver-evj-batch>   : %d\n", test_cu_evj_batch);
+  printf("  <test-cusolver-ev-batch>    : %d\n", test_cu_ev_batch);
   printf("  <test-cusolver-evd-repeat>  : %d\n", test_cu_evd_repeat);
 
 
@@ -383,7 +390,7 @@ main(int argc, char* argv[])
   }
   */
 
-   bool test_accuracy = false;
+  bool test_accuracy = false;
 
   if (test_fp32 && test_eigeng_batch)
   {
@@ -408,10 +415,18 @@ main(int argc, char* argv[])
     if (test_cu_evj_batch)
     {
       printf("\n");
-      printf(">> float cuSolver Jacobi (cusolverDnDsyevjBatched), %d iterations.\n",iter);
+      printf(">> float cuSolver Jacobi batch (cusolverDnDsyevjBatched), %d iterations.\n",iter);
       printf("N, runtime (s), GF/s, GB/s\n");
       for(int i=0; nums[i] > 0; i++)
         GPU_batch_test<float,Solver_type::CUSOLVER_EVJ_BATCH>(iter, batch_size, nums[i], type, test_accuracy);
+    }
+    if (test_cu_ev_batch)
+    {
+      printf("\n");
+      printf(">> float cuSolver new batch (cusolverDnXsyevBatched), %d iterations.\n",iter);
+      printf("N, runtime (s), GF/s, GB/s\n");
+      for(int i=0; nums[i] > 0; i++)
+        GPU_batch_test<float,Solver_type::CUSOLVER_EV_BATCH>(iter, batch_size, nums[i], type, test_accuracy);
     }
     if (test_cu_evd_repeat)
     {
@@ -427,10 +442,18 @@ main(int argc, char* argv[])
     if (test_cu_evj_batch)
     {
       printf("\n");
-      printf(">> double cuSolver Jacobi (cusolverDnDsyevjBatched), %d iterations.\n",iter);
+      printf(">> double cuSolver Jacobi batch (cusolverDnDsyevjBatched), %d iterations.\n",iter);
       printf("N, runtime (s), GF/s, GB/s\n");
       for(int i=0; nums[i] > 0; i++)
         GPU_batch_test<double,Solver_type::CUSOLVER_EVJ_BATCH>(iter, batch_size, nums[i], type, test_accuracy);
+    }
+    if (test_cu_ev_batch)
+    {
+      printf("\n");
+      printf(">> double cuSolver new batch (cusolverDnXsyevBatched), %d iterations.\n",iter);
+      printf("N, runtime (s), GF/s, GB/s\n");
+      for(int i=0; nums[i] > 0; i++)
+        GPU_batch_test<double,Solver_type::CUSOLVER_EV_BATCH>(iter, batch_size, nums[i], type, test_accuracy);
     }
     if (test_cu_evd_repeat)
     {

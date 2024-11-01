@@ -1,6 +1,6 @@
 #define	TIMER		0
 #if defined(__NVCC__)
-#define	USE_IMTQL	0
+#define	USE_IMTQL	1
 #define DO_PREFETCH	1
 #endif
 #if defined(__HIPCC__)
