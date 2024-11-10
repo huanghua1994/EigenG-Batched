@@ -267,7 +267,7 @@ GPU_batch_test(const int Itr, const int L, const int n, const Matrix_type type, 
       break;
 #if defined(__NVCC__)
     case Solver_type::CUSOLVER_EVJ_BATCH:
-      runtime_ms = cusolver_test(n, a_d, nm, w_d, L);
+      runtime_ms = cusolver_test<T>(n, a_d, nm, w_d, L);
       break;
     case Solver_type::CUSOLVER_EV_BATCH:
       runtime_ms = cusolver_ev_batch_test<T>(n, a_d, nm, w_d, L);
@@ -311,8 +311,6 @@ GPU_batch_test(const int Itr, const int L, const int n, const Matrix_type type, 
   double st_data = sizeof(T)*L*(double)n*(n/2.+2. +n+1. +n     );
   double data = ld_data + st_data;
 
-  //printf("N=%d time=%le %le[GF/s] %le[GB/s]\n",
-  //       n, tm, 1e-9*flop/tm, 1e-9*data/tm);
   printf("%4d, %.4le, %.4le, %.4le\n", n, tm, 1e-9*flop/tm, 1e-9*data/tm);
   fflush(stdout);
 
@@ -330,10 +328,9 @@ main(int argc, char* argv[])
   print_header("GPU-Batch-eigensolver", argc, argv);
 
   const int iter = 10;
-//  const int numBatch = 16384;
-//  const Matrix_type type = Matrix_type::MATRIX_FRANK;
-  const Matrix_type type = Matrix_type::MATRIX_LETKF;
-//  const Matrix_type type = Matrix_type::MATRIX_SYM_RAND;
+  //  const Matrix_type type = Matrix_type::MATRIX_FRANK;
+  //  const Matrix_type type = Matrix_type::MATRIX_LETKF;
+  const Matrix_type type = Matrix_type::MATRIX_SYM_RAND;
 
   int batch_size = 512;
   bool test_fp32 = true;

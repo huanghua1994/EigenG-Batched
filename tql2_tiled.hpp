@@ -6,18 +6,18 @@ template <class T,int tile_size>
 __device__ __noinline__ int
 tql2_tiled_( const long nm, const int n,
                 T * __restrict__ w_, T * __restrict__ z_,
-                int const MAX_SWEEP = 100,
+                int const max_sweep = 100,
                 T const tol = std::numeric_limits<T>::epsilon()*(std::is_same<T,double>::value?512:16),
-                bool const DO_SORT = false
+                bool const do_sort = (DO_SORT == 1)
            )
 {
   sync_over_cg<T,tile_size>();
   const int myid = threadIdx.x % tile_size + 1;
-#define	z(row,col)	(*(z_+((row)-1)+((col)-1)*nm))
-#define	w(index)	(*(w_+((index)-1)))
-#define	d(index)	(*(d_+((index)-1)))
-#define	e(index)	(*(e_+((index)-1)))
-#define	pos(index)	(*(pos_+((index)-1)))
+  #define z(row,col)  (*(z_+((row)-1)+((col)-1)*nm))
+  #define w(index)    (*(w_+((index)-1)))
+  #define d(index)    (*(d_+((index)-1)))
+  #define e(index)    (*(e_+((index)-1)))
+  #define pos(index)  (*(pos_+((index)-1)))
 
   const T ZERO = static_cast<T>(0.0e0);
   const T ONE  = static_cast<T>(1.0e0);
@@ -60,18 +60,18 @@ tql2_tiled_( const long nm, const int n,
 
       int itr;
       #pragma unroll 1
-      for(itr=0; itr<MAX_SWEEP; itr++) {
+      for(itr=0; itr<max_sweep; itr++) {
 
-	T dl1;
+        T dl1;
         T delta_d;
-	{
+        {
           const T dl_old = d(l);
           const T el = e(l);
           const T p = Div(d(l+1) - dl_old, el + el);
           const T r = pythag1(p);
           const T psr = p + Sign(r, p);
           const T dl  = Div(el, psr);
-		  dl1 = el * psr;
+                  dl1 = el * psr;
                   _if_ (myid==1) { d(l) = dl; d(l+1) = dl1; }
                   delta_d = dl_old - dl;
         } sync_over_cg<T,tile_size>();
@@ -100,8 +100,8 @@ tql2_tiled_( const long nm, const int n,
           c2 = c;
           s2 = s;
 
-	          ei = e(i);
-	  const T di = d(i);
+                  ei = e(i);
+          const T di = d(i);
           const T g = c * ei;
           const T h = c * p;
           const T r = pythag(p, ei);
@@ -111,11 +111,11 @@ tql2_tiled_( const long nm, const int n,
           c = Div(p, r);
           p = c * di - s * g;
           const T di1 = h + s * (c * g + s * di);
-	  sync_over_cg<int,tile_size>();
+          sync_over_cg<int,tile_size>();
           _if_ (myid==1) { e(i+1) = ei1; d(i+1) = di1; }
 
-	  T * aki0_ptr = aki1_ptr - nm;
-	  _if_ ( eee ) {
+          T * aki0_ptr = aki1_ptr - nm;
+          _if_ ( eee ) {
             T h0 = *aki0_ptr;
             *aki1_ptr = s * h0 + c * h1;
             h1 = c * h0 - s * h1;
@@ -129,7 +129,7 @@ tql2_tiled_( const long nm, const int n,
           const T r = Div(-s * s2 * c3 * el1 * ei, dl1);
           e(l) = s * r;
           d(l) = c * r;
-	} sync_over_cg<int,tile_size>();
+        } sync_over_cg<int,tile_size>();
 
         {
           const T tst2 = Abs(e(l));
@@ -137,7 +137,7 @@ tql2_tiled_( const long nm, const int n,
         }
 
       } sync_over_cg<T,tile_size>();
-      _if_ (itr>=MAX_SWEEP) { ierror = l; break; }
+      _if_ (itr>=max_sweep) { ierror = l; break; }
 
     }
 
@@ -148,7 +148,7 @@ tql2_tiled_( const long nm, const int n,
   }
 
 
-  _if_ (DO_SORT) {
+  _if_ (do_sort) {
     _if_ (ierror==0) {
       T * const d_ = shmem;
       int * const pos_ = (int *)(shmem + tile_size);
@@ -184,11 +184,11 @@ tql2_tiled_( const long nm, const int n,
 
   // pos is on shmem, and passd to trbak1
 
-#undef	a
-#undef	w
-#undef	d
-#undef	e
-#undef	pos
+  #undef  a
+  #undef  w
+  #undef  d
+  #undef  e
+  #undef  pos
   sync_over_cg<T,tile_size>();
   return ierror;
 }

@@ -6,17 +6,17 @@ template <class T>
 __device__ __noinline__ int
 tql2_( const int nm, const int n,
         T * __restrict__ d_, T * __restrict__ e_, T * __restrict__ z_,
-	// optional
-	int const MAX_SWEEP = 100,
+        // optional
+        int const max_sweep = 100,
         T const tol = std::numeric_limits<T>::epsilon()*(std::is_same<T,double>::value?512:16),
-        bool const DO_SORT = false
+        bool const do_sort = (DO_SORT == 1)
      )
 {
   const int myid = threadIdx.x % WARP_GPU_SIZE + 1;
-#define	z(row,col)	(*(z_+((row)-1)+((col)-1)*nm))
-#define	d(index)	(*(d_+((index)-1)))
-#define	e(index)	(*(e_+((index)-1)))
-#define	pos(index)	(*(pos_+((index)-1)))
+  #define z(row,col)  (*(z_+((row)-1)+((col)-1)*nm))
+  #define d(index)    (*(d_+((index)-1)))
+  #define e(index)    (*(e_+((index)-1)))
+  #define pos(index)  (*(pos_+((index)-1)))
 
   const int tile_size = WARP_GPU_SIZE;
   T * shmem = __SHMEM__();
@@ -63,9 +63,9 @@ tql2_( const int nm, const int n,
 
       int itr;
       #pragma unroll 1
-      for(itr=0; itr<MAX_SWEEP; itr++) {
+      for(itr=0; itr<max_sweep; itr++) {
 
-	T dl1;
+        T dl1;
         T delta_d;
         sync_over_warp(); {
           const T dl_old = d(l);
@@ -99,7 +99,7 @@ tql2_( const int nm, const int n,
 
           T * c_tmp = shmem;
           T * s_tmp = c_tmp + tile_size;
-	  T cc, ss, ee, dd;
+          T cc, ss, ee, dd;
 
           #pragma unroll 1
           for(int i=i0; i>=i1; i--) {
@@ -108,8 +108,8 @@ tql2_( const int nm, const int n,
             c2 = c;
             s2 = s;
 
-	    const T ei = e(i);
-	    const T di = d(i);
+            const T ei = e(i);
+            const T di = d(i);
             const T g = c * ei;
             const T h = c * p;
             const T r = pythag(p, ei);
@@ -122,29 +122,28 @@ tql2_( const int nm, const int n,
 
 #if 0
             sync_over_warp();
-	    _if_ (i0-i==myid-1) {
+            _if_ (i0-i==myid-1) {
               e(i + 1) = ei1; d(i + 1) = di1;
-	      c_tmp[myid-1] = c; s_tmp[myid-1] = s;
+              c_tmp[myid-1] = c; s_tmp[myid-1] = s;
             } sync_over_warp();
 #else
-	    _if_ (i0-i==myid-1) {
+            _if_ (i0-i==myid-1) {
               ee = ei1; dd = di1; cc = c; ss = s;
             }
 #endif
-
-	  } sync_over_warp();
+          } sync_over_warp();
 #if 0
 #else
-	  _if_ (i0-i1>=myid-1) {
+          _if_ (i0-i1>=myid-1) {
             int i = i0 - (myid - 1);
             e(i + 1) = ee; d(i + 1) = dd;
-	    c_tmp[myid-1] = cc; s_tmp[myid-1] = ss;
-	  } sync_over_warp();
+            c_tmp[myid-1] = cc; s_tmp[myid-1] = ss;
+          } sync_over_warp();
 #endif
 
           for(int i=i0; i>=i1; i--) {
-	    c = c_tmp[i0-i]; s = s_tmp[i0-i];
-	    T * zki0_ptr = &z(myid,i+0);
+            c = c_tmp[i0-i]; s = s_tmp[i0-i];
+            T * zki0_ptr = &z(myid,i+0);
             T * zki1_ptr = &z(myid,i+1);
             for(int k=myid; k<=n; k+=WARP_GPU_SIZE ) {
               const T h0 = *zki0_ptr;
@@ -163,13 +162,13 @@ tql2_( const int nm, const int n,
           d(l) = c * r;
         } sync_over_warp();
 
-	{
+        {
           const T tst2 = Abs(e(l));
           _if_(tst2 <= tst1) break;
         }
 
       } sync_over_warp();
-      _if_ (itr>=MAX_SWEEP) { ierror = l; break; }
+      _if_ (itr>=max_sweep) { ierror = l; break; }
 
     }
 
@@ -179,7 +178,7 @@ tql2_( const int nm, const int n,
 
   }
 
-  _if_ (DO_SORT) {
+  _if_ (do_sort) {
     _if_ (ierror == 0) {
       int * const pos_ = (int *)e_;
       for(int i=myid; i<=n; i+=WARP_GPU_SIZE) {
@@ -207,9 +206,9 @@ tql2_( const int nm, const int n,
     }
   }
 
-#undef	z
-#undef	d
-#undef	e
+  #undef  z
+  #undef  d
+  #undef  e
   sync_over_warp();
   return ierror;
 }

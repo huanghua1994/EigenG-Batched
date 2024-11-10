@@ -1,0 +1,14 @@
+*.o
+*.cu_o
+*.ptx
+*.a
+*.s
+a.out
+a.out-*
+*.exe
+*.hpp-*
+*.nsys-rep
+.nfs*
+devel
+devel/*
+*.log

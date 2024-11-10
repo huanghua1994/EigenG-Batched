@@ -3,15 +3,8 @@
 #include <cusolverDn.h>
 #include "nvtx3/nvToolsExt.h"
 
-#if 0
-void
-cusolver_test(int n, half *A, int lda, half *W, int batchSize)
-{
-}
-#endif
-
-float
-cusolver_test(int n, double *A, int lda, double *W, int batchSize)
+template<typename T>
+float cusolver_test(int n, T *A, int lda, T *W, int batchSize, const bool check_ret_info = false)
 {
   cusolverDnHandle_t cusolverH = NULL;
   cusolverDnCreate(&cusolverH);
@@ -21,155 +14,133 @@ cusolver_test(int n, double *A, int lda, double *W, int batchSize)
   syevjInfo_t syevj_params = NULL;
   cusolverDnCreateSyevjInfo(&syevj_params);
   //Use default parameters
-  //double constexpr EPS = (double)std::numeric_limits<double>::epsilon();
-  //cusolverDnXsyevjSetTolerance(syevj_params,EPS*512);
-  //cusolverDnXsyevjSetMaxSweeps(syevj_params,10);
-  //cusolverDnXsyevjSetSortEig(syevj_params,0);
-
-  cudaEvent_t start_event, stop_event;
-  cudaEventCreate(&start_event);
-  cudaEventCreate(&stop_event);
-
-  int lwork;
-  cusolverDnDsyevjBatched_bufferSize(
-    cusolverH,
-    CUSOLVER_EIG_MODE_VECTOR,
-    CUBLAS_FILL_MODE_LOWER,  //CUBLAS_FILL_MODE_UPPER,
-    n,
-    A,
-    lda,
-    W,
-    &lwork,
-    syevj_params,
-    batchSize
-  );
-
-  double *d_work;
-  cudaMalloc((void**)&d_work, sizeof(double)*lwork);
-  int *d_info;
-  cudaMalloc((void**)&d_info, sizeof(int)*batchSize);
-
-  cudaEventRecord(start_event, stream);
-  nvtxRangePushA("cusolverDnDsyevjBatched");
-  cusolverDnDsyevjBatched(
-    cusolverH,
-    CUSOLVER_EIG_MODE_VECTOR,
-    CUBLAS_FILL_MODE_LOWER,  //CUBLAS_FILL_MODE_UPPER,
-    n,
-    A,
-    lda,
-    W,
-    d_work,
-    lwork,
-    d_info,
-    syevj_params,
-    batchSize
-  );
-  nvtxRangePop();
-  cudaEventRecord(stop_event, stream);
-  cudaEventSynchronize(start_event);
-  cudaEventSynchronize(stop_event);
-  float runtime_ms = 0;
-  cudaEventElapsedTime(&runtime_ms, start_event, stop_event);
-
-  cudaFree(d_work);
-  //int * info = (int *)malloc(sizeof(int)*batchSize);
-  //cudaMemcpy(info,d_info,sizeof(int)*batchSize,cudaMemcpyDeviceToHost);
-  cudaFree(d_info);
-
-  /*
-  for(int i=0;i<batchSize;i++){
-    if(info[i]!=0) {
-      printf("[%06d] Gave up the iteration.\n",i); break;
-    }
-  }
-  free(info);
-  */
-
-  cudaEventDestroy(start_event);
-  cudaEventDestroy(stop_event);
-
-  cusolverDnDestroySyevjInfo(syevj_params);
-  cusolverDnDestroy(cusolverH);
-  cudaStreamDestroy(stream);
-  return runtime_ms;
-} 
-
-float
-cusolver_test(int n, float *A, int lda, float *W, int batchSize)
-{
-  cusolverDnHandle_t cusolverH = NULL;
-  cusolverDnCreate(&cusolverH);
-  cudaStream_t stream = NULL; 
-  cudaStreamCreateWithFlags(&stream, cudaStreamNonBlocking);
-  cusolverDnSetStream(cusolverH, stream);
-  syevjInfo_t syevj_params = NULL;
-  cusolverDnCreateSyevjInfo(&syevj_params);
-  //Use default parameters
-  //float constexpr EPS = std::numeric_limits<float>::epsilon();
+  //T constexpr EPS = std::numeric_limits<T>::epsilon();
   //cusolverDnXsyevjSetTolerance(syevj_params, EPS*16);
   //cusolverDnXsyevjSetMaxSweeps(syevj_params,10);
   //cusolverDnXsyevjSetSortEig(syevj_params,0);
 
+  cusolverStatus_t status;
+  cudaError_t err;
+
   cudaEvent_t start_event, stop_event;
   cudaEventCreate(&start_event);
   cudaEventCreate(&stop_event);
 
   int lwork;
-  cusolverDnSsyevjBatched_bufferSize(
-    cusolverH,
-    CUSOLVER_EIG_MODE_VECTOR,
-    CUBLAS_FILL_MODE_LOWER,
-    n,
-    A,
-    lda,
-    W,
-    &lwork,
-    syevj_params,
-    batchSize
-  );
+  if (sizeof(T) == 8)
+  {
+    status = cusolverDnDsyevjBatched_bufferSize(
+      cusolverH,
+      CUSOLVER_EIG_MODE_VECTOR,
+      CUBLAS_FILL_MODE_LOWER,
+      n,
+      reinterpret_cast<double*>(A),
+      lda,
+      reinterpret_cast<double*>(W),
+      &lwork,
+      syevj_params,
+      batchSize
+    );
+  }
+  if (sizeof(T) == 4)
+  {
+    status = cusolverDnSsyevjBatched_bufferSize(
+      cusolverH,
+      CUSOLVER_EIG_MODE_VECTOR,
+      CUBLAS_FILL_MODE_LOWER,
+      n,
+      reinterpret_cast<float*>(A),
+      lda,
+      reinterpret_cast<float*>(W),
+      &lwork,
+      syevj_params,
+      batchSize
+    );
+  }
+  if (status != CUSOLVER_STATUS_SUCCESS)
+  {
+    printf("[ERROR] cusolverDnXsyevjBatched_bufferSize failed with error code %d\n", status);
+    return 0.0f;
+  }
 
-  float *s_work;
-  cudaMalloc((void**)&s_work, sizeof(float)*lwork);
-  int *s_info;
-  cudaMalloc((void**)&s_info, sizeof(int)*batchSize);
+  T *d_work;
+  err = cudaMalloc((void**)&d_work, sizeof(T)*lwork);
+  if (err != cudaSuccess)
+  {
+    printf("[ERROR] cudaMalloc for size %zu failed with code %d\n", sizeof(T)*lwork, err);
+    return 0.0f;
+  }
+  int *d_info;
+  err = cudaMalloc((void**)&d_info, sizeof(int)*batchSize);
+  if (err != cudaSuccess)
+  {
+    printf("[ERROR] cudaMalloc for size %zu failed with code %d\n", sizeof(int)*batchSize, err);
+    return 0.0f;
+  }
 
   cudaEventRecord(start_event, stream);
-  nvtxRangePushA("cusolverDnSsyevjBatched");
-  cusolverDnSsyevjBatched(
-    cusolverH,
-    CUSOLVER_EIG_MODE_VECTOR,
-    CUBLAS_FILL_MODE_LOWER,
-    n,
-    A,
-    lda,
-    W,
-    s_work,
-    lwork,
-    s_info,
-    syevj_params,
-    batchSize
-  );
+  if (sizeof(T) == 8)
+  {
+    nvtxRangePushA("cusolverDnDsyevjBatched");
+    status = cusolverDnDsyevjBatched(
+      cusolverH,
+      CUSOLVER_EIG_MODE_VECTOR,
+      CUBLAS_FILL_MODE_LOWER,
+      n,
+      reinterpret_cast<double*>(A),
+      lda,
+      reinterpret_cast<double*>(W),
+      reinterpret_cast<double*>(d_work),
+      lwork,
+      d_info,
+      syevj_params,
+      batchSize
+    );
+  }
+  if (sizeof(T) == 4)
+  {
+    nvtxRangePushA("cusolverDnSsyevjBatched");
+    status = cusolverDnSsyevjBatched(
+      cusolverH,
+      CUSOLVER_EIG_MODE_VECTOR,
+      CUBLAS_FILL_MODE_LOWER,
+      n,
+      reinterpret_cast<float*>(A),
+      lda,
+      reinterpret_cast<float*>(W),
+      reinterpret_cast<float*>(d_work),
+      lwork,
+      d_info,
+      syevj_params,
+      batchSize
+    );
+  }
   nvtxRangePop();
   cudaEventRecord(stop_event, stream);
   cudaEventSynchronize(start_event);
   cudaEventSynchronize(stop_event);
   float runtime_ms = 0;
   cudaEventElapsedTime(&runtime_ms, start_event, stop_event);
-
-  cudaFree(s_work);
-  //int * info = (int *)malloc(sizeof(int)*batchSize);
-  //cudaMemcpy(info,s_info,sizeof(int)*batchSize,cudaMemcpyDeviceToHost);
-  cudaFree(s_info);
-
-  /*
-  for(int i=0;i<batchSize;i++){
-    if(info[i]!=0) {
-      printf("[%06d] Gave up the iteration.\n",i); break;
-    }
+  if (status != CUSOLVER_STATUS_SUCCESS)
+  {
+    printf("[ERROR] cusolverDnXsyevjBatched failed with error code %d\n", status);
+    return 0.0f;
   }
-  free(info);
-  */
+
+  if (check_ret_info)
+  {
+    int * info = (int *)malloc(sizeof(int)*batchSize);
+    cudaMemcpy(info,d_info,sizeof(int)*batchSize,cudaMemcpyDeviceToHost);
+    for(int i=0;i<batchSize;i++){
+      if(info[i]!=0) {
+        printf("XsyevjBatched failed for %d-th problem\n",i); break;
+      }
+    }
+    free(info);
+  }
+ 
+  cudaFree(d_work);
+  cudaFree(d_info);
 
   cudaEventDestroy(start_event);
   cudaEventDestroy(stop_event);
@@ -182,7 +153,7 @@ cusolver_test(int n, float *A, int lda, float *W, int batchSize)
 
 // This test requires CTK 12.6.2 or later
 template<typename T>
-float cusolver_ev_batch_test(int n_, T *A, int lda_, T *W, int batch_size_)
+float cusolver_ev_batch_test(int n_, T *A, int lda_, T *W, int batch_size_, const bool check_ret_info = false)
 {
   int64_t n = (int64_t) n_;
   int64_t lda = (int64_t) lda_;
@@ -201,8 +172,11 @@ float cusolver_ev_batch_test(int n_, T *A, int lda_, T *W, int batch_size_)
 
   cudaDataType dtype = (sizeof(T) == 8) ? CUDA_R_64F : CUDA_R_32F;
 
+  cusolverStatus_t status;
+  cudaError_t err;
+
   size_t host_work_bytes = 0, dev_work_bytes = 0;
-  cusolverDnXsyevBatched_bufferSize(
+  status = cusolverDnXsyevBatched_bufferSize(
     handle,
     syev_params,
     CUSOLVER_EIG_MODE_VECTOR,
@@ -218,16 +192,36 @@ float cusolver_ev_batch_test(int n_, T *A, int lda_, T *W, int batch_size_)
     &host_work_bytes,
     batch_size
   );
+  if (status != CUSOLVER_STATUS_SUCCESS)
+  {
+    printf("[ERROR] cusolverDnXsyevBatched_bufferSize failed with error code %d\n", status);
+    return 0.0f;
+  }
 
   void *dev_workspace = NULL, *host_workspace = NULL;
   int *dev_info = NULL;
-  cudaMalloc(&dev_workspace, dev_work_bytes);
-  cudaMallocHost(&host_workspace, host_work_bytes);
-  cudaMalloc(&dev_info, sizeof(int) * batch_size);
+  err = cudaMalloc(&dev_workspace, dev_work_bytes);
+  if (err != cudaSuccess)
+  {
+    printf("[ERROR] cudaMalloc for size %zu failed with code %d\n", dev_work_bytes, err);
+    return 0.0f;
+  }
+  err = cudaMallocHost(&host_workspace, host_work_bytes);
+  if (err != cudaSuccess)
+  {
+    printf("[ERROR] cudaMallocHost for size %zu failed with code %d\n", host_work_bytes, err);
+    return 0.0f;
+  }
+  err = cudaMalloc(&dev_info, sizeof(int) * batch_size);
+  if (err != cudaSuccess)
+  {
+    printf("[ERROR] cudaMalloc for size %zu failed with code %d\n", sizeof(int) * batch_size, err);
+    return 0.0f;
+  }
 
   cudaEventRecord(start_event, stream);
   nvtxRangePushA("cusolverDnXsyevBatched");
-  cusolverDnXsyevBatched(
+  status = cusolverDnXsyevBatched(
     handle,
     syev_params,
     CUSOLVER_EIG_MODE_VECTOR,
@@ -252,6 +246,24 @@ float cusolver_ev_batch_test(int n_, T *A, int lda_, T *W, int batch_size_)
   cudaEventSynchronize(stop_event);
   float runtime_ms = 0;
   cudaEventElapsedTime(&runtime_ms, start_event, stop_event);
+
+  if (status != CUSOLVER_STATUS_SUCCESS)
+  {
+    printf("[ERROR] cusolverDnXsyevBatched failed with error code %d\n", status);
+    return 0.0f;
+  }
+
+  if (check_ret_info)
+  {
+    int * info = (int *)malloc(sizeof(int)*batch_size_);
+    cudaMemcpy(info,dev_info,sizeof(int)*batch_size_,cudaMemcpyDeviceToHost);
+    for(int i=0;i<batch_size_;i++){
+      if(info[i]!=0) {
+        printf("XsyevBatched failed for %d-th problem\n",i); break;
+      }
+    }
+    free(info);
+  }
 
   cudaFree(dev_workspace);
   cudaFreeHost(host_workspace);

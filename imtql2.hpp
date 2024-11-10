@@ -8,9 +8,9 @@ __device__ __noinline__ int
 imtql2_( const int nm, const int n,
                 T * __restrict__ d_, T * __restrict__ e_, T * __restrict__ z_,
                 // optional arguments
-                int const MAX_SWEEP = 10,
+                int const max_sweep = 100,
                 T const tol = std::numeric_limits<T>::epsilon()*(std::is_same<T,double>::value?512:16),
-                bool const DO_SORT = false
+                bool const do_sort = (DO_SORT == 1)
         )        
 {
   const int myid = threadIdx.x % WARP_GPU_SIZE + 1;
@@ -46,7 +46,7 @@ imtql2_( const int nm, const int n,
 
     int itr;
     #pragma unroll 1
-    for (itr=0; itr<=MAX_SWEEP; itr++) {
+    for (itr=0; itr<=max_sweep; itr++) {
 
       int m;
       {
@@ -141,11 +141,11 @@ imtql2_( const int nm, const int n,
         e(m) = ZERO;
       }
     }
-    _if_ (itr>MAX_SWEEP) { ierror = l; break; }
+    _if_ (itr>max_sweep) { ierror = l; break; }
 
   } sync_over_warp();
 
-  _if_ ( DO_SORT ) {
+  _if_ ( do_sort ) {
     _if_ ( ierror == 0 ) {
       int * const pos_ = (int *)e_;
       for(int i=myid; i<=n; i+=WARP_GPU_SIZE) {
