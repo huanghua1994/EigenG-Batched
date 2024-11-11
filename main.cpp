@@ -59,6 +59,8 @@ rand_R( unsigned int * seed_ptr )
 template < class T > __host__ void
 set_mat(T *a, const int nm, const int n, const Matrix_type type, const int seed_)
 {
+  // Note: set_mat is call in an OMP region, seed is thread-local
+  // Actually we don't need any "omp parallel for" in this function
   unsigned int seed = seed_;
 
   if ( type == Matrix_type::MATRIX_LETKF ) {
@@ -162,7 +164,7 @@ set_mat(T *a, const int nm, const int n, const Matrix_type type, const int seed_
     free(w); free(ht);
 
   } else {
-
+    /*
 #pragma omp parallel for
     for(int i=0;i<n;i++) {
     for(int j=0;j<=i;j++) {
@@ -187,6 +189,29 @@ set_mat(T *a, const int nm, const int n, const Matrix_type type, const int seed_
       }
       a[i+nm*j] = x; a[j+nm*i] = x;
     }}
+    */
+  }
+
+  if (type == Matrix_type::MATRIX_SYM_RAND)
+  {
+    int blk_size = 32;
+    for (int jj = 0; jj < n; jj += blk_size)
+    {
+      int jj_end = min(jj + blk_size, n);
+      for (int ii = 0; ii <= jj; ii += blk_size)
+      {
+        int ii_end = min(ii + blk_size, n);
+        if (ii == jj) ii_end = jj + 1;
+        for (int j = jj; j < jj_end; j++)
+          for (int i = ii; i < ii_end; i++)
+          {
+            T t = static_cast<T>(static_cast<double>(rand_r(&seed)) / static_cast<double>(RAND_MAX));
+            T x = 2 * t - static_cast<T>(1.0);
+            a[i + n * j] = x;
+            a[j + n * i] = x;
+          }
+      }  // ii
+    }  // jj
   }
 }
 
@@ -369,7 +394,7 @@ int main(int argc, char* argv[])
   printf("  <test-cusolver-evj-batch>   : %d\n", test_cu_evj_batch);
   printf("  <test-cusolver-ev-batch>    : %d\n", test_cu_ev_batch);
   printf("  <test-cusolver-evd-repeat>  : %d\n", test_cu_evd_repeat);
-
+  printf("\n");
 
   #if defined(__NVCC__)
   const int nums[] = { 4, 8, 16, 32, 48, 64, 80, 96, 112, 128, 160, 192, 224, 256, 320, 384, 448, 512, 640, 768, 896, 1024, 0 };
