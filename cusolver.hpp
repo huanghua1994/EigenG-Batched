@@ -60,7 +60,7 @@ float cusolver_test(int n, T *A, int lda, T *W, int batchSize, const bool check_
   if (status != CUSOLVER_STATUS_SUCCESS)
   {
     printf("[ERROR] cusolverDnXsyevjBatched_bufferSize failed with error code %d\n", status);
-    return 0.0f;
+    return -1.0f;
   }
 
   T *d_work;
@@ -68,14 +68,14 @@ float cusolver_test(int n, T *A, int lda, T *W, int batchSize, const bool check_
   if (err != cudaSuccess)
   {
     printf("[ERROR] cudaMalloc for size %zu failed with code %d\n", sizeof(T)*lwork, err);
-    return 0.0f;
+    return -1.0f;
   }
   int *d_info;
   err = cudaMalloc((void**)&d_info, sizeof(int)*batchSize);
   if (err != cudaSuccess)
   {
     printf("[ERROR] cudaMalloc for size %zu failed with code %d\n", sizeof(int)*batchSize, err);
-    return 0.0f;
+    return -1.0f;
   }
 
   cudaEventRecord(start_event, stream);
@@ -124,7 +124,7 @@ float cusolver_test(int n, T *A, int lda, T *W, int batchSize, const bool check_
   if (status != CUSOLVER_STATUS_SUCCESS)
   {
     printf("[ERROR] cusolverDnXsyevjBatched failed with error code %d\n", status);
-    return 0.0f;
+    return -1.0f;
   }
 
   if (check_ret_info)
@@ -195,7 +195,7 @@ float cusolver_ev_batch_test(int n_, T *A, int lda_, T *W, int batch_size_, cons
   if (status != CUSOLVER_STATUS_SUCCESS)
   {
     printf("[ERROR] cusolverDnXsyevBatched_bufferSize failed with error code %d\n", status);
-    return 0.0f;
+    return -1.0f;
   }
 
   void *dev_workspace = NULL, *host_workspace = NULL;
@@ -204,19 +204,19 @@ float cusolver_ev_batch_test(int n_, T *A, int lda_, T *W, int batch_size_, cons
   if (err != cudaSuccess)
   {
     printf("[ERROR] cudaMalloc for size %zu failed with code %d\n", dev_work_bytes, err);
-    return 0.0f;
+    return -1.0f;
   }
   err = cudaMallocHost(&host_workspace, host_work_bytes);
   if (err != cudaSuccess)
   {
     printf("[ERROR] cudaMallocHost for size %zu failed with code %d\n", host_work_bytes, err);
-    return 0.0f;
+    return -1.0f;
   }
   err = cudaMalloc(&dev_info, sizeof(int) * batch_size);
   if (err != cudaSuccess)
   {
     printf("[ERROR] cudaMalloc for size %zu failed with code %d\n", sizeof(int) * batch_size, err);
-    return 0.0f;
+    return -1.0f;
   }
 
   cudaEventRecord(start_event, stream);
@@ -250,7 +250,7 @@ float cusolver_ev_batch_test(int n_, T *A, int lda_, T *W, int batch_size_, cons
   if (status != CUSOLVER_STATUS_SUCCESS)
   {
     printf("[ERROR] cusolverDnXsyevBatched failed with error code %d\n", status);
-    return 0.0f;
+    return -1.0f;
   }
 
   if (check_ret_info)
